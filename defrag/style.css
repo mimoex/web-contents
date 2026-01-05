@@ -1,0 +1,76 @@
+body {
+  background: #008080;
+  font-family: "MS UI Gothic", "MS Gothic", sans-serif;
+  font-size: 12px;
+}
+
+.window {
+  width: 680px;
+  margin: 30px auto;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+}
+
+.titlebar {
+  background: linear-gradient(to right, #000080, #0000a0);
+  color: #ffffff;
+  padding: 4px 6px;
+  font-weight: bold;
+}
+
+.content {
+  padding: 8px;
+}
+
+canvas {
+  background: #000000;
+  border: 2px inset #808080;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.status {
+  background: #c0c0c0;
+}
+
+.label {
+  margin-bottom: 4px;
+}
+
+.progress {
+  height: 16px;
+  background: #808080;
+  border: 1px solid #000; /* 平坦な境界線 */
+  margin-bottom: 6px;
+  box-sizing: border-box;
+  padding: 2px; /* 内側に余白を作り、ブロックを見せる */
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  /* ブロックを表現する繰り返しグラデーション（塗り部分 + ギャップ） */
+  background-image: repeating-linear-gradient(90deg, #000080 0 8px, transparent 8px 10px);
+  background-repeat: repeat;
+  background-position: left center;
+  /* 立体感無しのフラット表示 */
+  box-shadow: none;
+  border: none;
+}
+
+.buttons {
+  display: flex;
+  gap: 6px;
+}
+
+button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 12px;
+  border: 2px outset #ffffff;
+  background: #c0c0c0;
+}
+
+button:active {
+  border: 2px inset #ffffff;
+}

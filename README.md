@@ -1,3 +1,4 @@
 # web-contents
 
-www.mimoex.netとは分離して管理するコンテンツ
+www.mimoex.net
+とは分離して管理するコンテンツ

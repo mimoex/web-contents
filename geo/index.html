@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Mimoex HTML5 Geolocation API tester</title>
+  <style>
+    #map {
+      width: 100%;
+      height: 500px;
+    }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.0/dist/leaflet.css" />
+  <script src="/geo/leaflet.js"></script>
+</head>
+
+<body>
+
+  <h1>Mimoex HTML5 Geolocation API tester</h1>
+  <p>HTML5のGeoAPIを用いて居場所を検出します。</p>
+  <p>GPSが搭載されていないデスクトップPCでもある程度の座標を検出できます。無線LANで接続すると精度の高い結果が表示されます。</p>
+  <p>モバイルルータやモバイル回線を用いたテザリングでの動作はよくわかりません。多分ISPの本拠地が表示されると思われる…
+  <p>最近のブラウザだと、場所検出ボタンを押すとブラウザが位置情報を許可するか問われますので、やってみたい場合は許可してください。</p>
+  <p><b>※座標データはサーバへ送信されません。 ブラウザ内だけで完結するようなJavascriptで動いてます。</b></p>
+
+  <button type="button" class="btn btn-warning" onclick="getLocation()">場所検出</button>
+
+  <p id="geodata"></p>
+  
+    <div id="map"></div>
+  
+  <script>
+
+    var map = L.map('map').setView([36.575, 135.984], 5);    // 日本を中心に設定
+
+    var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="http://osm.org/copyright">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>',
+      maxZoom: 19
+    });
+    tileLayer.addTo(map);
+
+
+
+
+    var x = document.getElementById("geodata");
+
+
+    function getLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(showPosition, showError);
+      } else {
+        x.innerHTML = "このブラウザは位置検出に対応していないと思われる...";
+      }
+    }
+
+    function showPosition(position) {
+      x.innerHTML = "緯度: " + position.coords.latitude +
+        "<br>経度: " + position.coords.longitude;
+
+      status.textContent = '';
+      L.marker([position.coords.latitude, position.coords.longitude]).addTo(map);
+    }
+
+    function showError(error) {
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          x.innerHTML = "位置情報へのアクセスが拒否されました。"
+          break;
+        case error.POSITION_UNAVAILABLE:
+          x.innerHTML = "位置情報を読み取ることができません。"
+          break;
+        case error.TIMEOUT:
+          x.innerHTML = "リクエストはタイムアウトしました。"
+          break;
+        case error.UNKNOWN_ERROR:
+          x.innerHTML = "なんかよくわからんエラーが発生したよ。"
+          break;
+      }
+    }
+  </script>
+</body>
+</html>
