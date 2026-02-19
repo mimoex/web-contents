@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Image Masker (Local, Single File)</title>
+  <style>
+    :root {
+      --bg:#0b0f14; --panel:#121826; --fg:#e6eefc; --muted:#98a2b3; --bd:#273244; --btn:#1b2333;
+      --header-top: #0b0f14; --header-bottom: #0b0f14cc;
+      --drop-bg: #0f1522; --stage-bg: #070a0f; --canvas-bg: #000; --kbd-bg: #0f1522;
+      --ui-overlay-bg: rgba(230,238,252,0.10); --ui-overlay-text: rgba(230,238,252,0.85);
+      --mask-color: #000;
+    }
+    /* ライトテーマ（data-theme="light" を html に付与すると有効） */
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --panel: #f6f8fa;
+      --fg: #0b1220;
+      --muted: #556677;
+      --bd: #dde6f0;
+      --btn: #f0f5fb;
+      --header-top: #ffffff; --header-bottom: #ffffffcc;
+      --drop-bg: #f3f7fb; --stage-bg: #ffffff; --canvas-bg: #ffffff; --kbd-bg: #eef2f6;
+      --ui-overlay-bg: rgba(11,17,24,0.08); --ui-overlay-text: rgba(11,17,24,0.85);
+      --mask-color: #000;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:12px 14px; border-bottom:1px solid var(--bd); background:linear-gradient(180deg, var(--header-top), var(--header-bottom)); position:sticky; top:0; z-index:5; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .group { display:flex; gap:8px; align-items:center; padding:6px 8px; background:var(--panel); border:1px solid var(--bd); border-radius:10px; }
+    button, input[type="range"], select { accent-color: #7aa2ff; }
+    button, select, input[type="number"], input[type="text"] {
+      background:var(--btn); color:var(--fg); border:1px solid var(--bd);
+      padding:8px 10px; border-radius:10px; font-weight:600;
+    }
+    select, input[type="number"], input[type="text"] { font-weight:500; }
+    button { cursor:pointer; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    button.active { outline:2px solid #7aa2ff; }
+    .label { color:var(--muted); font-size:12px; margin-right:4px; }
+    .hint { color:var(--muted); font-size:12px; }
+    main { padding:12px; display:grid; gap:12px; }
+    .drop {
+      border:1px dashed var(--bd); border-radius:14px; padding:12px;
+      background: var(--drop-bg); color:var(--muted);
+    }
+    .drop.drag { border-color:#7aa2ff; color:var(--fg); }
+    .stage {
+      display:grid; place-items:center; overflow:auto;
+      border:1px solid var(--bd); border-radius:14px; background:var(--stage-bg);
+      min-height: 62vh;
+      user-select:none;
+    }
+    canvas { background:var(--canvas-bg); border-radius:10px; touch-action:none; }
+    .footer { color:var(--muted); font-size:12px; line-height:1.6; }
+    kbd { border:1px solid var(--bd); padding:2px 6px; border-radius:6px; background:var(--kbd-bg); color:var(--fg); }
+    .sep { width:1px; height:24px; background:var(--bd); margin:0 2px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div class="group">
+      <span class="label">読み込み</span>
+      <input id="file" type="file" accept="image/*" />
+      <button id="fit">フィット</button>
+      <button id="resetView">視点リセット</button>
+    </div>
+
+    <div class="group">
+      <span class="label">ツール</span>
+      <button id="toolBrush" class="active">ブラシ</button>
+      <button id="toolRect">矩形</button>
+      <span class="label">太さ</span>
+      <input id="size" type="range" min="4" max="120" value="24" />
+      <span id="sizeVal" class="hint">24</span>
+      <span class="sep"></span>
+      <span class="hint">ズーム: ホイール / パン: <kbd>Space</kbd>+ドラッグ or 中ボタン</span>
+    </div>
+
+    <div class="group">
+      <span class="label">操作</span>
+      <button id="undo" disabled>Undo</button>
+      <button id="redo" disabled>Redo</button>
+      <button id="clear" disabled>マスク全消し</button>
+    </div>
+
+    <div class="group">
+      <span class="label">出力</span>
+      <select id="outPreset">
+        <option value="large">大 (1.0x)</option>
+        <option value="mid" selected>中 (0.7x)</option>
+        <option value="small">小 (0.5x)</option>
+        <option value="longedge">長辺指定</option>
+      </select>
+      <span class="label">長辺px</span>
+      <input id="longEdge" type="number" min="320" max="8192" value="1600" style="width:100px" />
+      <span class="sep"></span>
+      <select id="outFmt">
+        <option value="image/png" selected>PNG</option>
+        <option value="image/jpeg">JPG</option>
+        <option value="image/webp">WebP</option>
+      </select>
+      <span class="label">品質</span>
+      <input id="quality" type="range" min="40" max="100" value="92" />
+      <span id="qVal" class="hint">92</span>
+      <button id="export" disabled>保存</button>
+    </div>
+
+    <div class="group">
+      <span class="label">表示</span>
+      <button id="themeToggle">🌙</button>
+    </div>
+
+    <div class="hint">
+      ショートカット: <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> Undo,
+      <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> Redo,
+      <kbd>Esc</kbd> 取消
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="drop" class="drop">
+    画像をドラッグ&ドロップ、または上の「ファイル選択」から読み込み。黒塗りします。
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+  </div>
+
+  <div class="footer">
+    <div>※ローカル完結。外部通信なし。</div>
+    <div>※黒塗りは出力画像に焼き込み（基本復元不能）。</div>
+    <div>※JPG/WebPは「品質」適用。PNGは無視（常にロスレス）。</div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d', { willReadFrequently: false });
+
+  // 動的にCSS変数から取得する色（テーマ切替に追従）
+  let maskColor = '#000';
+  let uiOverlayBg = 'rgba(230,238,252,0.10)';
+  let uiOverlayText = 'rgba(230,238,252,0.85)';
+  function refreshThemeColors() {
+    const s = getComputedStyle(document.documentElement);
+    maskColor = (s.getPropertyValue('--mask-color') || '#000').trim();
+    uiOverlayBg = (s.getPropertyValue('--ui-overlay-bg') || 'rgba(230,238,252,0.10)').trim();
+    uiOverlayText = (s.getPropertyValue('--ui-overlay-text') || 'rgba(230,238,252,0.85)').trim();
+  }
+  refreshThemeColors();
+
+  const fileInp = document.getElementById('file');
+  const drop = document.getElementById('drop');
+  const stage = document.getElementById('stage');
+
+  const toolBrush = document.getElementById('toolBrush');
+  const toolRect  = document.getElementById('toolRect');
+  const sizeR = document.getElementById('size');
+  const sizeVal = document.getElementById('sizeVal');
+
+  const undoBtn = document.getElementById('undo');
+  const redoBtn = document.getElementById('redo');
+  const clearBtn = document.getElementById('clear');
+
+  const exportBtn = document.getElementById('export');
+  const fitBtn = document.getElementById('fit');
+  const resetViewBtn = document.getElementById('resetView');
+  const themeToggle = document.getElementById('themeToggle');
+
+  const outPreset = document.getElementById('outPreset');
+  const longEdgeInp = document.getElementById('longEdge');
+  const outFmt = document.getElementById('outFmt');
+  const qualityR = document.getElementById('quality');
+  const qVal = document.getElementById('qVal');
+
+  // ====== State ======
+  let img = null;
+
+  // 表示（ビュー）: 画像座標 → 画面(CSSpx) 変換は
+  // screen = img * viewZoom + viewPan
+  // viewPan は CSSpx
+  let viewZoom = 1;             // 表示ズーム
+  let viewPan = { x:0, y:0 };   // 表示パン（CSSpx）
+  let baseFitZoom = 1;          // フィット時のズーム（目安）
+  const ZOOM_MIN = 0.05;
+  const ZOOM_MAX = 20;
+
+  let tool = 'brush';
+  let brushSize = Number(sizeR.value);
+
+  // マスクは「元画像座標」で保持
+  let actions = [];
+  let history = [];
+  let histIdx = -1;
+
+  // interaction
+  let isDown = false;
+  let isPanning = false;
+  let panByMiddle = false;
+  let panStart = null;        // {x,y} pointer screen
+  let panStartPan = null;     // {x,y} viewPan snapshot
+  let startPt = null;         // rect start (img coords)
+  let curPt = null;           // rect current (img coords)
+  let curStroke = null;       // brush action (temp)
+
+  const dpr = () => window.devicePixelRatio || 1;
+
+  function setTool(t) {
+    tool = t;
+    toolBrush.classList.toggle('active', t === 'brush');
+    toolRect.classList.toggle('active', t === 'rect');
+    cancelTemp();
+  }
+
+  function cancelTemp() {
+    isDown = false;
+    isPanning = false;
+    panByMiddle = false;
+    panStart = null;
+    panStartPan = null;
+    startPt = null;
+    curPt = null;
+    curStroke = null;
+    render();
+  }
+
+  function deepCopyActions(src) {
+    return src.map(a => {
+      if (a.type === 'brush') {
+        return { type:'brush', size:a.size, points: a.points.map(p => ({x:p.x,y:p.y})) };
+      } else {
+        return { type:'rect', x:a.x, y:a.y, w:a.w, h:a.h };
+      }
+    });
+  }
+
+  function pushHistory() {
+    history = history.slice(0, histIdx + 1);
+    history.push(deepCopyActions(actions));
+    histIdx = history.length - 1;
+    syncButtons();
+  }
+
+  function undo() {
+    if (histIdx <= 0) return;
+    histIdx--;
+    actions = deepCopyActions(history[histIdx]);
+    cancelTemp();
+    syncButtons();
+  }
+
+  function redo() {
+    if (histIdx >= history.length - 1) return;
+    histIdx++;
+    actions = deepCopyActions(history[histIdx]);
+    cancelTemp();
+    syncButtons();
+  }
+
+  function clearAll() {
+    actions = [];
+    pushHistory();
+    cancelTemp();
+  }
+
+  function syncButtons() {
+    const hasImg = !!img;
+    undoBtn.disabled = !hasImg || !(histIdx > 0);
+    redoBtn.disabled = !hasImg || !(histIdx >= 0 && histIdx < history.length - 1);
+    clearBtn.disabled = !hasImg || actions.length === 0;
+    exportBtn.disabled = !hasImg;
+  }
+
+  function resizeCanvasToStage() {
+    // Canvasはステージに合わせて「見やすい領域」を確保する（画面解像度に追従）
+    const w = Math.max(1, stage.clientWidth - 24);
+    const h = Math.max(1, stage.clientHeight - 24);
+    const ratio = dpr();
+    cv.width = Math.round(w * ratio);
+    cv.height = Math.round(h * ratio);
+    cv.style.width = w + 'px';
+    cv.style.height = h + 'px';
+    ctx.setTransform(ratio,0,0,ratio,0,0); // CSS px基準
+  }
+
+  function fitToStage() {
+    if (!img) return;
+    const pad = 24;
+    const vw = stage.clientWidth - pad;
+    const vh = stage.clientHeight - pad;
+    const s = Math.min(vw / img.naturalWidth, vh / img.naturalHeight, 1);
+    baseFitZoom = s;
+    viewZoom = s;
+
+    // 中央に置く
+    const cx = (stage.clientWidth) / 2;
+    const cy = (stage.clientHeight) / 2;
+    viewPan.x = cx - (img.naturalWidth * viewZoom) / 2;
+    viewPan.y = cy - (img.naturalHeight * viewZoom) / 2;
+
+    render();
+  }
+
+  function resetView() {
+    if (!img) return;
+    viewZoom = baseFitZoom || 1;
+    const cx = (stage.clientWidth) / 2;
+    const cy = (stage.clientHeight) / 2;
+    viewPan.x = cx - (img.naturalWidth * viewZoom) / 2;
+    viewPan.y = cy - (img.naturalHeight * viewZoom) / 2;
+    render();
+  }
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function toImageCoords(evt) {
+    // 画面(CSSpx) → 画像座標
+    const rect = cv.getBoundingClientRect();
+    const sx = (evt.clientX - rect.left);
+    const sy = (evt.clientY - rect.top);
+    const x = (sx - viewPan.x) / viewZoom;
+    const y = (sy - viewPan.y) / viewZoom;
+    return {
+      x: clamp(x, 0, img.naturalWidth),
+      y: clamp(y, 0, img.naturalHeight),
+    };
+  }
+
+  function drawMaskOnContext(c) {
+    refreshThemeColors();
+    c.save();
+    c.fillStyle = maskColor;
+    c.strokeStyle = maskColor;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+
+    for (const a of actions) {
+      if (a.type === 'rect') {
+        c.fillRect(a.x, a.y, a.w, a.h);
+      } else if (a.type === 'brush') {
+        if (a.points.length < 1) continue;
+        c.lineWidth = a.size;
+        c.beginPath();
+        c.moveTo(a.points[0].x, a.points[0].y);
+        for (let i=1;i<a.points.length;i++) c.lineTo(a.points[i].x, a.points[i].y);
+        c.stroke();
+        // 点でも塗る
+        c.beginPath();
+        c.arc(a.points[0].x, a.points[0].y, a.size/2, 0, Math.PI*2);
+        c.fill();
+      }
+    }
+    c.restore();
+  }
+
+  function render() {
+    refreshThemeColors();
+    // 背景クリア
+    const w = parseInt(cv.style.width || "1", 10);
+    const h = parseInt(cv.style.height || "1", 10);
+    ctx.clearRect(0,0,w,h);
+
+    if (!img) return;
+
+    // 画像座標 → 画面(CSSpx): scale(viewZoom) then translate(viewPan)
+    ctx.save();
+    ctx.translate(viewPan.x, viewPan.y);
+    ctx.scale(viewZoom, viewZoom);
+
+    // 1) 画像
+    ctx.drawImage(img, 0, 0);
+
+    // 2) 確定マスク
+    drawMaskOnContext(ctx);
+
+    // 3) 矩形プレビュー
+    if (tool === 'rect' && isDown && startPt && curPt) {
+      const x = Math.min(startPt.x, curPt.x);
+      const y = Math.min(startPt.y, curPt.y);
+      const ww = Math.abs(curPt.x - startPt.x);
+      const hh = Math.abs(curPt.y - startPt.y);
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = maskColor;
+      ctx.fillRect(x,y,ww,hh);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#7aa2ff';
+      ctx.lineWidth = 2 / viewZoom; // ズームでも線幅一定っぽく
+      ctx.strokeRect(x,y,ww,hh);
+      ctx.restore();
+    }
+
+    // 4) ブラシプレビュー（描画中）
+    if (tool === 'brush' && isDown && curStroke && curStroke.points.length) {
+      ctx.save();
+      ctx.strokeStyle = maskColor;
+      ctx.fillStyle = maskColor;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = curStroke.size;
+      const pts = curStroke.points;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, curStroke.size/2, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // 画面端の案内（軽く）
+    ctx.save();
+    ctx.fillStyle = uiOverlayBg;
+    ctx.fillRect(10, 10, 210, 52);
+    ctx.fillStyle = uiOverlayText;
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto';
+    const zTxt = `Zoom: ${(viewZoom / (baseFitZoom||1)).toFixed(2)}x (表示)`;
+    ctx.fillText(zTxt, 18, 30);
+    ctx.fillText(`Pan: Space+Drag / Middle Drag`, 18, 48);
+    ctx.restore();
+  }
+
+  function zoomAt(screenX, screenY, zoomFactor) {
+    if (!img) return;
+    const oldZoom = viewZoom;
+    const newZoom = clamp(oldZoom * zoomFactor, ZOOM_MIN, ZOOM_MAX);
+    if (newZoom === oldZoom) return;
+
+    // カーソル位置が指す画像座標を保つように pan を調整
+    // img = (screen - pan) / zoom
+    // pan' = screen - img * zoom'
+    const imgX = (screenX - viewPan.x) / oldZoom;
+    const imgY = (screenY - viewPan.y) / oldZoom;
+
+    viewZoom = newZoom;
+    viewPan.x = screenX - imgX * newZoom;
+    viewPan.y = screenY - imgY * newZoom;
+    render();
+  }
+
+  async function loadFile(file) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.decoding = 'async';
+    im.loading = 'eager';
+    im.src = url;
+    await new Promise((res, rej) => { im.onload = res; im.onerror = rej; });
+    URL.revokeObjectURL(url);
+
+    img = im;
+    actions = [];
+    history = [];
+    histIdx = -1;
+    pushHistory(); // 初期状態
+
+    resizeCanvasToStage();
+    fitToStage();
+    syncButtons();
+  }
+
+  function getOutputScale() {
+    if (!img) return 1;
+    const preset = outPreset.value;
+    if (preset === 'large') return 1.0;
+    if (preset === 'mid') return 0.7;
+    if (preset === 'small') return 0.5;
+
+    // 長辺指定
+    const le = Number(longEdgeInp.value || 1600);
+    const long = Math.max(img.naturalWidth, img.naturalHeight);
+    const s = clamp(le / long, 0.05, 8);
+    return s;
+  }
+
+  function exportImage() {
+    if (!img) return;
+
+    const mime = outFmt.value; // image/png/jpeg/webp
+    const q = clamp(Number(qualityR.value) / 100, 0.1, 1.0);
+
+    // スケール後サイズ
+    const s = getOutputScale();
+    const outW = Math.max(1, Math.round(img.naturalWidth * s));
+    const outH = Math.max(1, Math.round(img.naturalHeight * s));
+
+    // 合成は元画像座標のマスクを、そのまま縮尺して描画
+    const out = document.createElement('canvas');
+    out.width = outW;
+    out.height = outH;
+    const c = out.getContext('2d');
+
+    c.save();
+    c.scale(s, s);
+    c.drawImage(img, 0, 0);
+    drawMaskOnContext(c);
+    c.restore();
+
+    const ts = new Date();
+    const pad2 = n => String(n).padStart(2,'0');
+    const ext = (mime === 'image/png') ? 'png' : (mime === 'image/jpeg' ? 'jpg' : 'webp');
+    const name = `masked_${ts.getFullYear()}${pad2(ts.getMonth()+1)}${pad2(ts.getDate())}_${pad2(ts.getHours())}${pad2(ts.getMinutes())}${pad2(ts.getSeconds())}_${outW}x${outH}.${ext}`;
+
+    const toBlobWithQuality = (cb) => {
+      // PNGはquality無視
+      if (mime === 'image/png') out.toBlob(cb, mime);
+      else out.toBlob(cb, mime, q);
+    };
+
+    toBlobWithQuality((blob) => {
+      if (!blob) return;
+      const a = document.createElement('a');
+      a.download = name;
+      a.href = URL.createObjectURL(blob);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+  }
+
+  // ====== UI wiring ======
+  fileInp.addEventListener('change', (e) => loadFile(e.target.files?.[0]));
+
+  ;['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.add('drag');
+  }));
+  ;['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.remove('drag');
+  }));
+  drop.addEventListener('drop', (e) => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) loadFile(f);
+  });
+
+  toolBrush.addEventListener('click', () => setTool('brush'));
+  toolRect.addEventListener('click', () => setTool('rect'));
+
+  sizeR.addEventListener('input', () => {
+    brushSize = Number(sizeR.value);
+    sizeVal.textContent = String(brushSize);
+  });
+
+  undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
+  clearBtn.addEventListener('click', clearAll);
+
+  exportBtn.addEventListener('click', exportImage);
+  fitBtn.addEventListener('click', fitToStage);
+  resetViewBtn.addEventListener('click', resetView);
+
+  outFmt.addEventListener('change', () => {
+    const mime = outFmt.value;
+    const needsQ = (mime === 'image/jpeg' || mime === 'image/webp');
+    qualityR.disabled = !needsQ;
+    qVal.style.opacity = needsQ ? '1' : '0.5';
+  });
+  qualityR.addEventListener('input', () => qVal.textContent = String(qualityR.value));
+  outPreset.addEventListener('change', () => {
+    longEdgeInp.disabled = (outPreset.value !== 'longedge');
+  });
+
+  // 初期状態
+  sizeVal.textContent = String(brushSize);
+  qVal.textContent = String(qualityR.value);
+  longEdgeInp.disabled = (outPreset.value !== 'longedge');
+  qualityR.disabled = (outFmt.value === 'image/png');
+
+  // ====== Theme (ダーク/ライト切替) ======
+  function applyTheme(t) {
+    if (t === 'dark') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', 'light');
+    if (themeToggle) themeToggle.textContent = (t === 'dark') ? '🌙' : '☀️';
+    // JS側で参照している色を更新
+    if (typeof refreshThemeColors === 'function') refreshThemeColors();
+  }
+
+  // 保存済みか、OSの優先設定を参照
+  try {
+    const saved = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initTheme = saved || (prefersDark ? 'dark' : 'light');
+    applyTheme(initTheme);
+  } catch (e) { applyTheme('dark'); }
+
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      applyTheme(next);
+    });
+  }
+
+  // ====== Keyboard shortcuts ======
+  window.addEventListener('keydown', (e) => {
+    const z = (e.key === 'z' || e.key === 'Z');
+    const esc = (e.key === 'Escape');
+    const mod = e.ctrlKey || e.metaKey;
+
+    if (esc) { cancelTemp(); return; }
+
+    if (mod && z && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (mod && ( (z && e.shiftKey) || (e.key === 'y' || e.key === 'Y') )) {
+      e.preventDefault(); redo(); return;
+    }
+  });
+
+  // ====== Pointer interactions (draw/pan) ======
+  function shouldPan(e) {
+    // Space+drag か 中ボタン でパン
+    return e.spaceKey || e.button === 1 || panByMiddle;
+  }
+
+  // Space判定（PointerEventにspaceKeyは無いので、グローバルで見る）
+  const keyState = { space:false };
+  window.addEventListener('keydown', (e) => { if (e.code === 'Space') keyState.space = true; });
+  window.addEventListener('keyup',   (e) => { if (e.code === 'Space') keyState.space = false; });
+
+  cv.addEventListener('pointerdown', (e) => {
+    if (!img) return;
+    cv.setPointerCapture(e.pointerId);
+
+    // 中ボタンパン開始
+    if (e.button === 1) { panByMiddle = true; }
+
+    // パン開始条件
+    if (keyState.space || e.button === 1) {
+      isPanning = true;
+      panStart = { x: e.clientX, y: e.clientY };
+      panStartPan = { x: viewPan.x, y: viewPan.y };
+      render();
+      return;
+    }
+
+    // 描画開始
+    isDown = true;
+    const p = toImageCoords(e);
+    if (tool === 'brush') {
+      curStroke = { type:'brush', size: brushSize, points: [p] };
+    } else {
+      startPt = p; curPt = p;
+    }
+    render();
+  });
+
+  cv.addEventListener('pointermove', (e) => {
+    if (!img) return;
+
+    if (isPanning && panStart && panStartPan) {
+      const dx = (e.clientX - panStart.x);
+      const dy = (e.clientY - panStart.y);
+      viewPan.x = panStartPan.x + dx;
+      viewPan.y = panStartPan.y + dy;
+      render();
+      return;
+    }
+
+    if (!isDown) return;
+
+    const p = toImageCoords(e);
+    if (tool === 'brush') {
+      if (!curStroke) return;
+      curStroke.points.push(p);
+    } else {
+      curPt = p;
+    }
+    render();
+  });
+
+  cv.addEventListener('pointerup', (e) => {
+    if (!img) return;
+
+    // パン終了
+    if (isPanning) {
+      isPanning = false;
+      panStart = null; panStartPan = null;
+      panByMiddle = false;
+      render();
+      return;
+    }
+
+    // 描画確定
+    if (!isDown) return;
+    isDown = false;
+
+    if (tool === 'brush') {
+      if (curStroke && curStroke.points.length > 0) {
+        actions.push(curStroke);
+        pushHistory();
+      }
+      curStroke = null;
+    } else {
+      if (startPt && curPt) {
+        const x = Math.min(startPt.x, curPt.x);
+        const y = Math.min(startPt.y, curPt.y);
+        const w = Math.abs(curPt.x - startPt.x);
+        const h = Math.abs(curPt.y - startPt.y);
+        if (w >= 2 && h >= 2) {
+          actions.push({ type:'rect', x, y, w, h });
+          pushHistory();
+        }
+      }
+      startPt = null; curPt = null;
+    }
+    render();
+    syncButtons();
+  });
+
+  cv.addEventListener('pointercancel', () => cancelTemp());
+
+  // ====== Wheel zoom (cursor-centered) ======
+  cv.addEventListener('wheel', (e) => {
+    if (!img) return;
+    e.preventDefault();
+
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    // trackpad: deltaY small; mouse wheel: larger
+    const delta = e.deltaY;
+    const factor = Math.exp(-delta * 0.0015); // smooth zoom
+    zoomAt(sx, sy, factor);
+  }, { passive:false });
+
+  // ====== Resize ======
+  window.addEventListener('resize', () => {
+    resizeCanvasToStage();
+    // resizeで見失いがちなので、パンは維持して再描画だけ
+    render();
+  });
+
+  // 初期
+  resizeCanvasToStage();
+  render();
+  syncButtons();
+})();
+</script>
+</body>
+</html>
