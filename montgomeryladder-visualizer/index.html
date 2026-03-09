@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Montgomery Ladder Visualizer</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121933;
+      --panel2: #0f1630;
+      --line: #2a355f;
+      --text: #e8ecff;
+      --muted: #9aa6d1;
+      --accent: #7cc4ff;
+      --accent2: #8bffb0;
+      --warn: #ffd37c;
+      --danger: #ff9a9a;
+      --bit0: #4e7fff;
+      --bit1: #ff8a65;
+      --shadow: 0 12px 32px rgba(0,0,0,.28);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #09101d 0%, #0d1430 100%);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr auto auto auto auto;
+      gap: 12px;
+      align-items: end;
+      background: rgba(18,25,51,.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+      backdrop-filter: blur(8px);
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .field input, .field select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #0a1126;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: linear-gradient(180deg, #182247, #131b38);
+      padding: 12px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      min-width: 92px;
+    }
+
+    .btn:hover { filter: brightness(1.08); }
+    .btn.primary { border-color: #3d7cff; background: linear-gradient(180deg, #1c3f8f, #173271); }
+    .btn.good { border-color: #36a667; background: linear-gradient(180deg, #1d6f43, #185737); }
+    .btn.warn { border-color: #b28a3d; background: linear-gradient(180deg, #6d5522, #5a471e); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 300px 1fr 420px;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .panel {
+      background: rgba(18,25,51,.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2 {
+      font-size: 15px;
+      margin-bottom: 12px;
+      color: #f2f5ff;
+    }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .bits {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .bit {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      border: 1px solid transparent;
+      background: #0b1330;
+      color: #fff;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+
+    .bit.zero { background: rgba(78,127,255,.18); border-color: rgba(78,127,255,.55); }
+    .bit.one  { background: rgba(255,138,101,.18); border-color: rgba(255,138,101,.55); }
+    .bit.active {
+      transform: translateY(-2px) scale(1.06);
+      box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 8px 20px rgba(0,0,0,.22);
+    }
+    .bit.done { opacity: .62; }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px dashed rgba(154,166,209,.18);
+      align-items: start;
+    }
+
+    .pillrow {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .pill {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #0a1126;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .ladderCanvas {
+      width: 100%;
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(154,166,209,.16);
+      background:
+        radial-gradient(circle at top, rgba(124,196,255,.10), transparent 36%),
+        linear-gradient(180deg, rgba(8,15,35,.9), rgba(11,17,34,.95));
+      padding: 10px;
+    }
+
+    svg text {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      fill: var(--text);
+    }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .legend .l0::before { background: var(--accent); }
+    .legend .l1::before { background: var(--accent2); }
+    .legend .l2::before { background: var(--warn); }
+    .legend .l3::before { background: var(--danger); }
+
+    pre.code {
+      margin: 0;
+      padding: 14px;
+      border-radius: 14px;
+      background: #0a1126;
+      border: 1px solid rgba(154,166,209,.16);
+      overflow: auto;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .code-line {
+      display: block;
+      padding: 2px 8px;
+      border-radius: 8px;
+      white-space: pre;
+    }
+
+    .code-line.active {
+      background: rgba(124,196,255,.15);
+      outline: 1px solid rgba(124,196,255,.38);
+    }
+
+    .stateCard {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stateBox {
+      background: #0a1126;
+      border: 1px solid rgba(154,166,209,.18);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .stateBox h3 {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .stateValue {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .log {
+      max-height: 280px;
+      overflow: auto;
+      display: grid;
+      gap: 8px;
+    }
+
+    .logItem {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #0a1126;
+      border: 1px solid rgba(154,166,209,.14);
+    }
+
+    .logItem.active {
+      outline: 1px solid rgba(124,196,255,.45);
+      background: rgba(124,196,255,.09);
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .barwrap {
+      background: #0a1126;
+      border: 1px solid rgba(154,166,209,.16);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .bar {
+      height: 10px;
+      background: rgba(255,255,255,.06);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .bar > div {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+    }
+
+    .footerNote {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 1180px) {
+      .grid { grid-template-columns: 1fr; }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .toolbar .btn { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <div class="field">
+        <label for="scalar">Scalar k</label>
+        <input id="scalar" type="number" min="1" value="13" />
+      </div>
+      <div class="field">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="symbolic">Symbolic ([m]P)</option>
+          <option value="numeric">Numeric (small EC over Fp)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="curve">Toy Curve</label>
+        <select id="curve">
+          <option value="toy1">y² = x³ + 2x + 3 mod 97</option>
+          <option value="toy2">y² = x³ + 0x + 7 mod 223</option>
+        </select>
+      </div>
+      <button class="btn primary" id="buildBtn">Trace生成</button>
+      <button class="btn good" id="playBtn">再生</button>
+      <button class="btn" id="stepBtn">1ステップ</button>
+      <button class="btn warn" id="resetBtn">リセット</button>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Bit Stream / Invariant</h2>
+        <div id="bits" class="bits"></div>
+        <div class="kv"><div class="muted small">binary</div><div id="binary" class="mono"></div></div>
+        <div class="kv"><div class="muted small">current bit</div><div id="currentBit" class="mono">-</div></div>
+        <div class="kv"><div class="muted small">processed</div><div id="processed" class="mono">-</div></div>
+        <div class="kv"><div class="muted small">invariant</div><div id="invariant" class="mono">-</div></div>
+        <div class="pillrow" id="ops"></div>
+
+        <div class="compare">
+          <div class="barwrap">
+            <div class="small muted">Montgomery ladder</div>
+            <div id="ladderOpsText" class="mono" style="margin-top:6px">-</div>
+            <div class="bar"><div id="ladderBar" style="width:0%"></div></div>
+          </div>
+          <div class="barwrap">
+            <div class="small muted">Double-and-add</div>
+            <div id="daaOpsText" class="mono" style="margin-top:6px">-</div>
+            <div class="bar"><div id="daaBar" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <div class="footerNote">
+          各ステップで <span class="mono">R0=[m]P, R1=[m+1]P</span> の形を維持する様子を主に見せます。比較欄は、秘密ビットに依存して処理密度が揺れやすい double-and-add と、ほぼ一定パターンに揃えやすい ladder の違いを示す簡易表示です。
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Ladder Rail View</h2>
+        <div class="ladderCanvas">
+          <svg id="ladderSvg" width="900" height="620" viewBox="0 0 900 620"></svg>
+        </div>
+        <div class="legend">
+          <span class="l0">R0 rail</span>
+          <span class="l1">R1 rail</span>
+          <span class="l2">add / differential add</span>
+          <span class="l3">active step highlight</span>
+        </div>
+
+        <div class="stateCard">
+          <div class="stateBox">
+            <h3>R0</h3>
+            <div id="r0Val" class="stateValue mono">-</div>
+            <div id="r0Desc" class="small muted">-</div>
+          </div>
+          <div class="stateBox">
+            <h3>R1</h3>
+            <div id="r1Val" class="stateValue mono">-</div>
+            <div id="r1Desc" class="small muted">-</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Pseudocode / Step Log</h2>
+        <pre class="code" id="codeView"></pre>
+        <h2 style="margin-top:14px">Trace</h2>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const codeLines = [
+      'R0 = O',
+      'R1 = P',
+      'for bit in bits(k) from MSB to LSB:',
+      '    cswap(bit)',
+      '    T0 = 2 * R0',
+      '    T1 = R0 + R1',
+      '    T2 = 2 * R1',
+      '    if bit == 0:',
+      '        R0 = T0',
+      '        R1 = T1',
+      '    else:',
+      '        R0 = T1',
+      '        R1 = T2',
+      'return R0'
+    ];
+
+    const el = (id) => document.getElementById(id);
+    const scalarInput = el('scalar');
+    const modeSelect = el('mode');
+    const curveSelect = el('curve');
+    const bitsEl = el('bits');
+    const binaryEl = el('binary');
+    const currentBitEl = el('currentBit');
+    const processedEl = el('processed');
+    const invariantEl = el('invariant');
+    const opsEl = el('ops');
+    const ladderOpsTextEl = el('ladderOpsText');
+    const daaOpsTextEl = el('daaOpsText');
+    const ladderBarEl = el('ladderBar');
+    const daaBarEl = el('daaBar');
+    const r0ValEl = el('r0Val');
+    const r1ValEl = el('r1Val');
+    const r0DescEl = el('r0Desc');
+    const r1DescEl = el('r1Desc');
+    const codeViewEl = el('codeView');
+    const logEl = el('log');
+    const ladderSvg = el('ladderSvg');
+
+    let trace = [];
+    let cursor = 0;
+    let timer = null;
+
+    const curves = {
+      toy1: { p: 97, a: 2, b: 3, G: { x: 3, y: 6 } },
+      toy2: { p: 223, a: 0, b: 7, G: { x: 47, y: 71 } }
+    };
+
+    function mod(n, p) { return ((n % p) + p) % p; }
+
+    function invMod(a, p) {
+      let t = 0, newT = 1;
+      let r = p, newR = mod(a, p);
+      while (newR !== 0) {
+        const q = Math.floor(r / newR);
+        [t, newT] = [newT, t - q * newT];
+        [r, newR] = [newR, r - q * newR];
+      }
+      if (r > 1) throw new Error('inverse does not exist');
+      if (t < 0) t += p;
+      return t;
+    }
+
+    function isInf(P) { return !P || P.inf; }
+
+    function eqPoint(P, Q) {
+      if (isInf(P) && isInf(Q)) return true;
+      if (isInf(P) || isInf(Q)) return false;
+      return P.x === Q.x && P.y === Q.y;
+    }
+
+    function pointAdd(P, Q, curve) {
+      const { p, a } = curve;
+      if (isInf(P)) return Q;
+      if (isInf(Q)) return P;
+      if (P.x === Q.x && mod(P.y + Q.y, p) === 0) return { inf: true };
+
+      let m;
+      if (eqPoint(P, Q)) {
+        if (P.y === 0) return { inf: true };
+        m = mod((3 * P.x * P.x + a) * invMod(2 * P.y, p), p);
+      } else {
+        m = mod((Q.y - P.y) * invMod(Q.x - P.x, p), p);
+      }
+      const xr = mod(m * m - P.x - Q.x, p);
+      const yr = mod(m * (P.x - xr) - P.y, p);
+      return { x: xr, y: yr };
+    }
+
+    function scalarMulDAA(k, P, curve) {
+      let R = { inf: true };
+      let Q = P;
+      let adds = 0, doubles = 0;
+      const bits = k.toString(2);
+      for (const bit of bits) {
+        R = pointAdd(R, R, curve); doubles++;
+        if (bit === '1') { R = pointAdd(R, P, curve); adds++; }
+      }
+      return { point: R, adds, doubles };
+    }
+
+    function fmtPoint(P) {
+      if (isInf(P)) return 'O';
+      return `(${P.x}, ${P.y})`;
+    }
+
+    function fmtSymbolic(m) {
+      return m === null ? 'O' : `[${m}]P`;
+    }
+
+    function buildTrace() {
+      const k = Math.max(1, parseInt(scalarInput.value || '1', 10));
+      scalarInput.value = k;
+      const bits = k.toString(2);
+      const curve = curves[curveSelect.value];
+      const P = curve.G;
+      const mode = modeSelect.value;
+      const out = [];
+
+      let r0Mul = 0;
+      let r1Mul = 1;
+      let r0 = { inf: true };
+      let r1 = P;
+      let processed = '';
+
+      for (let i = 0; i < bits.length; i++) {
+        const bit = Number(bits[i]);
+        const before = {
+          r0Mul, r1Mul,
+          r0: mode === 'numeric' ? fmtPoint(r0) : fmtSymbolic(r0Mul === 0 ? null : r0Mul),
+          r1: mode === 'numeric' ? fmtPoint(r1) : fmtSymbolic(r1Mul)
+        };
+
+        const T0mul = 2 * r0Mul;
+        const T1mul = r0Mul + r1Mul;
+        const T2mul = 2 * r1Mul;
+        const T0 = pointAdd(r0, r0, curve);
+        const T1 = pointAdd(r0, r1, curve);
+        const T2 = pointAdd(r1, r1, curve);
+
+        let afterMul0, afterMul1, afterR0, afterR1;
+        if (bit === 0) {
+          afterMul0 = T0mul;
+          afterMul1 = T1mul;
+          afterR0 = T0;
+          afterR1 = T1;
+        } else {
+          afterMul0 = T1mul;
+          afterMul1 = T2mul;
+          afterR0 = T1;
+          afterR1 = T2;
+        }
+
+        processed += bits[i];
+
+        out.push({
+          step: i,
+          bit,
+          bitIndex: i,
+          totalBits: bits.length,
+          processed,
+          codeLine: bit === 0 ? 8 : 11,
+          opSequence: ['cswap', 'double', 'add', 'double'],
+          before,
+          after: {
+            r0Mul: afterMul0,
+            r1Mul: afterMul1,
+            r0: mode === 'numeric' ? fmtPoint(afterR0) : fmtSymbolic(afterMul0 === 0 ? null : afterMul0),
+            r1: mode === 'numeric' ? fmtPoint(afterR1) : fmtSymbolic(afterMul1)
+          },
+          invariant: `R0=[${afterMul0}]P, R1=[${afterMul1}]P (差は常に P)`
+        });
+
+        r0Mul = afterMul0;
+        r1Mul = afterMul1;
+        r0 = afterR0;
+        r1 = afterR1;
+      }
+
+      const ladderAdds = bits.length;
+      const ladderDoubles = bits.length * 2;
+      const daa = scalarMulDAA(k, P, curve);
+
+      return {
+        bits,
+        steps: out,
+        summary: {
+          ladderAdds,
+          ladderDoubles,
+          daaAdds: daa.adds,
+          daaDoubles: daa.doubles,
+          finalLadder: out.length ? out[out.length - 1].after.r0 : (mode === 'numeric' ? 'O' : '[0]P'),
+          finalDAA: mode === 'numeric' ? fmtPoint(daa.point) : `[${k}]P`
+        }
+      };
+    }
+
+    function renderCode(activeLineIndex) {
+      codeViewEl.innerHTML = codeLines.map((line, i) => {
+        const active = i === activeLineIndex ? 'active' : '';
+        return `<span class="code-line ${active}">${escapeHtml(line)}</span>`;
+      }).join('');
+    }
+
+    function escapeHtml(s) {
+      return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    }
+
+    function renderBits(bits, activeIndex) {
+      bitsEl.innerHTML = '';
+      bits.split('').forEach((b, i) => {
+        const div = document.createElement('div');
+        div.className = `bit ${b === '0' ? 'zero' : 'one'} ${i === activeIndex ? 'active' : ''} ${i < activeIndex ? 'done' : ''}`;
+        div.textContent = b;
+        bitsEl.appendChild(div);
+      });
+    }
+
+    function renderLog(steps, activeIndex) {
+      logEl.innerHTML = steps.map((s, i) => `
+        <div class="logItem ${i === activeIndex ? 'active' : ''}">
+          <div class="small muted">step ${s.step + 1} / bit=${s.bit}</div>
+          <div class="mono" style="margin-top:4px">before: R0=${s.before.r0}, R1=${s.before.r1}</div>
+          <div class="mono" style="margin-top:4px">after : R0=${s.after.r0}, R1=${s.after.r1}</div>
+          <div class="mono small muted" style="margin-top:4px">ops: ${s.opSequence.join(' → ')}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderOps(step) {
+      opsEl.innerHTML = '';
+      step.opSequence.forEach(op => {
+        const span = document.createElement('span');
+        span.className = 'pill mono';
+        span.textContent = op;
+        opsEl.appendChild(span);
+      });
+    }
+
+    function renderSummary(summary) {
+      const ladderTotal = summary.ladderAdds + summary.ladderDoubles;
+      const daaTotal = summary.daaAdds + summary.daaDoubles;
+      const max = Math.max(ladderTotal, daaTotal, 1);
+      ladderOpsTextEl.textContent = `add=${summary.ladderAdds}, dbl=${summary.ladderDoubles}`;
+      daaOpsTextEl.textContent = `add=${summary.daaAdds}, dbl=${summary.daaDoubles}`;
+      ladderBarEl.style.width = `${(ladderTotal / max) * 100}%`;
+      daaBarEl.style.width = `${(daaTotal / max) * 100}%`;
+    }
+
+    function renderLadder(traceObj, activeIndex) {
+      const { steps, bits } = traceObj;
+      const width = 900;
+      const top = 48;
+      const leftX = 260;
+      const rightX = 640;
+      const rowH = Math.max(76, Math.min(100, 500 / Math.max(steps.length, 4)));
+      const height = top + rowH * steps.length + 70;
+      ladderSvg.setAttribute('height', String(height));
+      ladderSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+      const parts = [];
+      parts.push(`<rect x="0" y="0" width="${width}" height="${height}" rx="18" fill="transparent"></rect>`);
+      parts.push(`<text x="${leftX}" y="28" text-anchor="middle" font-size="18" font-weight="700">R0 rail</text>`);
+      parts.push(`<text x="${rightX}" y="28" text-anchor="middle" font-size="18" font-weight="700">R1 rail</text>`);
+      parts.push(`<line x1="${leftX}" y1="${top - 10}" x2="${leftX}" y2="${height - 24}" stroke="#7cc4ff" stroke-width="6" stroke-linecap="round" opacity="0.8" />`);
+      parts.push(`<line x1="${rightX}" y1="${top - 10}" x2="${rightX}" y2="${height - 24}" stroke="#8bffb0" stroke-width="6" stroke-linecap="round" opacity="0.8" />`);
+
+      steps.forEach((s, i) => {
+        const y = top + i * rowH;
+        const isActive = i === activeIndex;
+        const fill = isActive ? 'rgba(255,154,154,.10)' : 'rgba(255,255,255,.03)';
+        const stroke = isActive ? 'rgba(255,154,154,.42)' : 'rgba(154,166,209,.12)';
+        parts.push(`<rect x="120" y="${y - 20}" width="660" height="${rowH - 10}" rx="18" fill="${fill}" stroke="${stroke}" />`);
+        parts.push(`<text x="68" y="${y + 8}" font-size="14" fill="#9aa6d1">b${i}=${s.bit}</text>`);
+        parts.push(`<text x="${leftX}" y="${y + 2}" text-anchor="middle" font-size="14" fill="#9aa6d1">${escapeHtml(s.before.r0)}</text>`);
+        parts.push(`<text x="${rightX}" y="${y + 2}" text-anchor="middle" font-size="14" fill="#9aa6d1">${escapeHtml(s.before.r1)}</text>`);
+
+        parts.push(`<circle cx="${leftX}" cy="${y + 28}" r="18" fill="#15335b" stroke="#7cc4ff" stroke-width="2" />`);
+        parts.push(`<circle cx="${rightX}" cy="${y + 28}" r="18" fill="#143d29" stroke="#8bffb0" stroke-width="2" />`);
+        parts.push(`<text x="${leftX}" y="${y + 33}" text-anchor="middle" font-size="13" font-weight="700">R0</text>`);
+        parts.push(`<text x="${rightX}" y="${y + 33}" text-anchor="middle" font-size="13" font-weight="700">R1</text>`);
+
+        parts.push(`<path d="M ${leftX + 26} ${y + 28} C ${leftX + 120} ${y - 2}, ${rightX - 120} ${y - 2}, ${rightX - 26} ${y + 28}" fill="none" stroke="#ffd37c" stroke-width="3" stroke-dasharray="8 6" opacity="0.9" />`);
+        parts.push(`<text x="450" y="${y + 2}" text-anchor="middle" font-size="12" fill="#ffd37c">add</text>`);
+
+        parts.push(`<text x="${leftX}" y="${y + 64}" text-anchor="middle" font-size="13">${escapeHtml(s.after.r0)}</text>`);
+        parts.push(`<text x="${rightX}" y="${y + 64}" text-anchor="middle" font-size="13">${escapeHtml(s.after.r1)}</text>`);
+      });
+
+      ladderSvg.innerHTML = parts.join('');
+    }
+
+    function applyStep(index) {
+      if (!trace.steps.length) return;
+      cursor = Math.max(0, Math.min(index, trace.steps.length - 1));
+      const step = trace.steps[cursor];
+      renderBits(trace.bits, cursor);
+      renderCode(step.codeLine);
+      renderLog(trace.steps, cursor);
+      renderOps(step);
+      renderLadder(trace, cursor);
+
+      binaryEl.textContent = trace.bits;
+      currentBitEl.textContent = `${step.bit} (index ${step.bitIndex}, MSB→LSB)`;
+      processedEl.textContent = step.processed;
+      invariantEl.textContent = step.invariant;
+      r0ValEl.textContent = step.after.r0;
+      r1ValEl.textContent = step.after.r1;
+      r0DescEl.textContent = `before: ${step.before.r0}`;
+      r1DescEl.textContent = `before: ${step.before.r1}`;
+    }
+
+    function buildAndRender() {
+      stopTimer();
+      trace = buildTrace();
+      renderSummary(trace.summary);
+      applyStep(0);
+    }
+
+    function stopTimer() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+        el('playBtn').textContent = '再生';
+      }
+    }
+
+    el('buildBtn').addEventListener('click', buildAndRender);
+
+    el('playBtn').addEventListener('click', () => {
+      if (!trace.steps.length) buildAndRender();
+      if (timer) {
+        stopTimer();
+        return;
+      }
+      el('playBtn').textContent = '停止';
+      timer = setInterval(() => {
+        if (cursor >= trace.steps.length - 1) {
+          stopTimer();
+          return;
+        }
+        applyStep(cursor + 1);
+      }, 1100);
+    });
+
+    el('stepBtn').addEventListener('click', () => {
+      if (!trace.steps.length) buildAndRender();
+      else applyStep(Math.min(cursor + 1, trace.steps.length - 1));
+    });
+
+    el('resetBtn').addEventListener('click', () => {
+      stopTimer();
+      if (!trace.steps.length) buildAndRender();
+      else applyStep(0);
+    });
+
+    modeSelect.addEventListener('change', buildAndRender);
+    curveSelect.addEventListener('change', buildAndRender);
+
+    buildAndRender();
+  </script>
+</body>
+</html>
